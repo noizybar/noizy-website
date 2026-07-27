@@ -1171,8 +1171,17 @@
       return;
     }
 
+    const address = document.getElementById('cartAddress').value.trim();
+    if(deliveryMethod === 'delivery' && !address){
+      errorEl.textContent = '\u10d2\u10d7\u10ee\u10dd\u10d5\u10d7 \u10db\u10d8\u10e3\u10d7\u10d8\u10d7\u10d4\u10d7 \u10db\u10d8\u10e1\u10d0\u10db\u10d0\u10e0\u10d7\u10d8 \u10d0\u10dc \u10d2\u10d0\u10db\u10dd\u10d8\u10e7\u10d4\u10dc\u10d4\u10d7 GPS.';
+      errorEl.style.display = 'block';
+      document.getElementById('cartAddress').focus();
+      return;
+    }
+
     const name = document.getElementById('cartName').value.trim();
     const total = cartTotal();
+    const deliveryLabel = deliveryMethod === 'delivery' ? '\u10db\u10dd\u10e2\u10d0\u10dc\u10d0 \u10db\u10d8\u10e1\u10d0\u10db\u10d0\u10e0\u10d7\u10d6\u10d4' : '\u10d7\u10d0\u10d5\u10d0\u10d3 \u10ec\u10d0\u10db\u10dd\u10d8\u10e6\u10d4\u10d1\u10e1';
 
     const btn = document.getElementById('cartPayBtn');
     const originalHTML = btn.innerHTML;
@@ -1180,10 +1189,13 @@
     btn.textContent = '\u10d2\u10d0\u10d3\u10d0\u10db\u10d8\u10e1\u10d0\u10db\u10d0\u10e0\u10d7\u10d4\u10d1\u10d0...';
 
     try{
+      // The kitchen is NOT notified here. create-order.js stashes these
+      // details server-side; payment-callback.js only releases them once
+      // BOG confirms the payment actually succeeded — never before.
       const res = await fetch('/.netlify/functions/create-order', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ items, total, name, phone })
+        body: JSON.stringify({ items, total, name, phone, deliveryLabel, address })
       });
       const data = await res.json();
       if(!res.ok || !data.redirectUrl){ throw new Error(data.error || 'failed'); }
