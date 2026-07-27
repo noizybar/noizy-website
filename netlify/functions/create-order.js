@@ -5,6 +5,13 @@
 // Netlify environment variables — never sent to the browser), creates a
 // payment order, and returns the URL the customer should be redirected to
 // in order to pay.
+//
+// The full order (including delivery address, which BOG's API has no field
+// for) is stashed in Netlify Blobs, keyed by the order id. It is only
+// released to the kitchen by payment-callback.js, and only once BOG
+// confirms the payment actually succeeded — never before.
+
+import { getStore } from '@netlify/blobs';
 
 export default async (req) => {
   if (req.method !== 'POST') {
@@ -12,7 +19,7 @@ export default async (req) => {
   }
 
   try {
-    const { items, total, name, phone } = await req.json();
+    const { items, total, name, phone, deliveryLabel, address } = await req.json();
 
     if (!Array.isArray(items) || items.length === 0 || !total) {
       return new Response(JSON.stringify({ error: 'Empty order' }), { status: 400 });
@@ -83,6 +90,26 @@ export default async (req) => {
     if (!orderRes.ok || !orderData._links || !orderData._links.redirect) {
       console.error('BOG order creation failed', orderData);
       return new Response(JSON.stringify({ error: 'Order creation failed' }), { status: 502 });
+    }
+
+    // 3. Stash the full order (incl. address) for payment-callback.js to
+    // release ONLY once payment is confirmed. Never sent to the kitchen yet.
+    try {
+      const orderText = items
+        .map((i) => `${i.qty}x ${i.en} \u2014 ${(i.qty * i.price).toFixed(2).replace(/\.00$/, '')}\u20be`)
+        .join('\n');
+      const store = getStore('pending-orders');
+      await store.setJSON(orderData.id, {
+        name: name || '',
+        phone: phone || '',
+        deliveryLabel: deliveryLabel || '',
+        address: address || '',
+        orderText,
+        total: Number(total).toFixed(2).replace(/\.00$/, '') + '\u20be',
+      });
+    } catch (stashErr) {
+      // Non-fatal: worst case the callback notification has less detail.
+      console.error('Failed to stash order details', stashErr);
     }
 
     return new Response(
